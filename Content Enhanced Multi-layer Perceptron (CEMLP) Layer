@@ -1,0 +1,48 @@
+class CEFN011(nn.Module):
+    def __init__(self, dim, network_depth, hidden_features=None, out_features=None):
+        super(CEFN011, self).__init__()
+        
+        
+        self.mlp = Mlp(network_depth=network_depth, in_features=dim, hidden_features=hidden_features,
+                       out_features=out_features)
+        self.norm = LayerNorm(dim, eps=1e-5)
+        
+        self.AVG = nn.AdaptiveAvgPool2d(1)
+        
+        self.mixConv2 = MixConv(dim,[3,5,1],1)
+        self.Linear2 = nn.Conv2d(dim, dim,1, stride=1, padding=0, groups=dim, dilation=1, padding_mode='reflect')
+        self.Conv32 = nn.Conv2d(dim, dim, 3, stride=1, padding=1, groups=dim, dilation=1, padding_mode='reflect')
+        self.Conv52 = nn.Conv2d(dim, dim, 5, stride=1, padding=2, groups=dim, dilation=1, padding_mode='reflect')
+        self.mixConv3 = MixConv(dim,[3,5,1],1)
+        self.Linear3 = nn.Conv2d(dim+dim+dim, dim,1, stride=1, padding=0, groups=dim, dilation=1, padding_mode='reflect')
+        self.Conv33 = nn.Conv2d(dim+dim+dim, dim, 3, stride=1, padding=1, groups=dim, dilation=1, padding_mode='reflect')
+        self.Conv53 = nn.Conv2d(dim+dim+dim, dim, 5, stride=1, padding=2, groups=dim, dilation=1, padding_mode='reflect')
+        self.sig = nn.Sigmoid()
+        
+        self.scaler = nn.Parameter(torch.ones(dim, 1, 1))
+
+    def forward(self, x):
+        
+        x1 = self.mixConv2(x)
+        
+        x11 = self.Conv32(x)
+        x12 = self.Conv52(x)
+        C1 = torch.concatenate((x1, x11,x12), dim=1)
+       # C1 = x1*x11*x12
+        #C1 = x1+x11+x12
+        x2 = self.mixConv3(C1)
+        x2ii = self.Linear2(x2)
+        x21 = self.Conv33(C1)
+        x22 = self.Conv53(C1)
+        C2 =torch.concatenate((x2ii, x21,x22), dim=1)
+       # C2 = x2ii* x21*x22
+       # C2 = x2ii+ x21+x22
+        xx = self.Linear3(C2)
+        xx1 = self.sig(xx)
+        attn = self.scaler* xx1
+        xv = self.norm(self.mlp(x))
+        
+        return xv* attn
+    
+MM18 = CEFN011(3,2)(y)
+print(MM18.shape)
